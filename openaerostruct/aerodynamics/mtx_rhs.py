@@ -52,6 +52,7 @@ class VLMMtxRHSComp(om.ExplicitComponent):
 
         self.system_size = system_size
 
+        self.add_input("rethorst_correction", shape=(system_size, system_size), val=0.)
         self.add_input("freestream_velocities", shape=(system_size, 3), units="m/s")
         self.add_output("mtx", shape=(system_size, system_size), units="1/m")
         self.add_output("rhs", shape=system_size, units="m/s")
@@ -68,6 +69,14 @@ class VLMMtxRHSComp(om.ExplicitComponent):
             cols=vel_indices.flatten(),
         )
 
+        cols = rows = np.arange(system_size**2)
+        self.declare_partials(
+            "mtx",
+            "correction",
+            cols=cols,
+            rows=rows,
+            val=1./(4*np.pi), # 1/4pi
+        )
         ind_1 = 0
         ind_2 = 0
 
@@ -151,6 +160,7 @@ class VLMMtxRHSComp(om.ExplicitComponent):
         # Actually obtain the final matrix by multiplying through with the
         # normals. Also create the rhs based on v dot n.
         outputs["mtx"] = np.einsum("ijk,ik->ij", self.mtx_n_n_3, self.normals_n_3)
+        outputs["mtx"] = outputs["mtx"] + inputs["correction"]/(4*np.pi) # applying the rethorst correction
         outputs["rhs"] = -np.einsum("ij,ij->i", inputs["freestream_velocities"], self.normals_n_3)
 
     def compute_partials(self, inputs, partials):
