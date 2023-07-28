@@ -55,9 +55,21 @@ class ConvertVelocity(om.ExplicitComponent):
 
         self.system_size = system_size
 
-        self.add_input("alpha", val=0.0, units="deg", tags=["mphys_input"])
-        self.add_input("beta", val=0.0, units="deg", tags=["mphys_input"])
-        self.add_input("v", val=1.0, units="m/s", tags=["mphys_input"])
+        n = (ny-1)*(nx-1)
+        rows = np.arange(0, 3*n, 1)
+        cols = []
+        for k in range(nx-1):
+            for i in range(ny-1):
+                for m in range(3):
+                    cols.append(i)
+
+        cols = np.array(cols)
+
+        self.add_input("alpha", val=0.0, units="deg")
+        self.add_input("beta", val=0.0, units="deg")
+        self.add_input("v", val=1.0, units="m/s")
+        self.add_input("velocity_distribution", shape=(ny-1), units="m/s")
+        self.add_input("mesh", shape=(nx, ny, 3), units="m")
 
         if rotational:
             self.add_input("rotational_velocities", shape=(system_size, 3), units="m/s")
@@ -66,7 +78,11 @@ class ConvertVelocity(om.ExplicitComponent):
 
         self.declare_partials("freestream_velocities", "alpha")
         self.declare_partials("freestream_velocities", "beta")
-        self.declare_partials("freestream_velocities", "v")
+        self.declare_partials("freestream_velocities", "v", val=np.zeros((3 * (nx - 1) * (ny - 1))))#rows=[0], cols=[0], val=[0]
+        self.declare_partials("freestream_velocities", "mesh", rows=[0], cols=[0], val=[0])
+        self.declare_partials("freestream_velocities", "velocity_distribution", rows=rows, cols=cols)
+
+        self.set_check_partial_options("*", method='fd')
 
         if rotational:
             nn = 3 * system_size
@@ -76,15 +92,27 @@ class ConvertVelocity(om.ExplicitComponent):
 
     def compute(self, inputs, outputs):
         # Rotate the freestream velocities based on the angle of attack and the sideslip angle.
+
         alpha = inputs["alpha"][0] * np.pi / 180.0
         beta = inputs["beta"][0] * np.pi / 180.0
+
+        mesh = inputs["mesh"]
+        nx, ny, _ = np.shape(mesh)
+        vjet = inputs["velocity_distribution"]
 
         cosa = np.cos(alpha)
         sina = np.sin(alpha)
         cosb = np.cos(beta)
         sinb = np.sin(beta)
 
-        v_inf = inputs["v"][0] * np.array([cosa * cosb, -sinb, sina * cosb])
+        # --- Here we inlcude the jet velocity ---
+        v_tot = np.zeros(((nx-1)*(ny-1)))
+        for i in range(nx-1):
+            v_tot[i*(ny-1):(i+1)*(ny-1)] = vjet
+
+        v_tot = v_tot.reshape((np.size(v_tot), 1))
+        v_inf = v_tot * np.array([cosa * cosb, -sinb, sina * cosb])
+        
         outputs["freestream_velocities"][:, :] = v_inf
 
         if self.options["rotational"]:
@@ -93,16 +121,35 @@ class ConvertVelocity(om.ExplicitComponent):
     def compute_partials(self, inputs, J):
         alpha = inputs["alpha"][0] * np.pi / 180.0
         beta = inputs["beta"][0] * np.pi / 180.0
+        v_adjusted = inputs["velocity_distribution"]
+        mesh = inputs["mesh"]
+        
+        nx, ny, _ = np.shape(mesh)
+        y = mesh[0, :, 1]
+        y_ = np.zeros((len(y)-1))
+        
+        for i in range(len(y)-1):
+            y_[i] = (y[i]+y[i+1])/2
 
         cosa = np.cos(alpha)
         sina = np.sin(alpha)
         cosb = np.cos(beta)
         sinb = np.sin(beta)
 
-        J["freestream_velocities", "v"] = np.tile(np.array([cosa * cosb, -sinb, sina * cosb]), self.system_size)
-        J["freestream_velocities", "alpha"] = np.tile(
-            inputs["v"][0] * np.array([-sina * cosb, 0.0, cosa * cosb]) * np.pi / 180.0, self.system_size
-        )
-        J["freestream_velocities", "beta"] = np.tile(
-            inputs["v"][0] * np.array([-cosa * sinb, -cosb, -sina * sinb]) * np.pi / 180.0, self.system_size
-        )
+        # --- Here we inlcude the jet velocity ---
+        v_tot = np.zeros(((nx-1)*(ny-1)))
+        
+        for i in range(nx-1):
+            v_tot[i*(ny-1):(i+1)*(ny-1)] = v_adjusted[:]
+
+        v_tot = v_tot.reshape((np.size(v_tot), 1))
+        
+        v_inf = np.ones(np.shape(v_tot)) * np.array([cosa * cosb, -sinb, sina * cosb])
+        v_inf_a = v_tot[:] * np.array([-sina * cosb, 0.0, cosa * cosb]) * np.pi / 180.0
+        v_inf_b = v_tot[:] * np.array([-cosa * sinb, -cosb, -sina * sinb]) * np.pi / 180.0
+
+        J["freestream_velocities", "velocity_distribution"] = v_inf.flatten()
+
+        J["freestream_velocities", "alpha"] = v_inf_a.flatten()
+
+        J["freestream_velocities", "beta"] = v_inf_b.flatten()

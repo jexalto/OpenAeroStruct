@@ -52,14 +52,17 @@ class VLMMtxRHSComp(om.ExplicitComponent):
 
         self.system_size = system_size
 
-        self.add_input("rethorst_correction", shape=(system_size, system_size), val=0.)
-        self.add_input("freestream_velocities", shape=(system_size, 3), units="m/s")
+        self.add_input("rethorst_correction", shape=(
+            system_size, system_size), val=0.)
+        self.add_input("freestream_velocities",
+                       shape=(system_size, 3), units="m/s")
         self.add_output("mtx", shape=(system_size, system_size), units="1/m")
         self.add_output("rhs", shape=system_size, units="m/s")
 
         # Set up indicies arrays for sparse Jacobians
         vel_indices = np.arange(system_size * 3).reshape((system_size, 3))
-        mtx_indices = np.arange(system_size * system_size).reshape((system_size, system_size))
+        mtx_indices = np.arange(
+            system_size * system_size).reshape((system_size, system_size))
         rhs_indices = np.arange(system_size)
 
         self.declare_partials(
@@ -72,11 +75,12 @@ class VLMMtxRHSComp(om.ExplicitComponent):
         cols = rows = np.arange(system_size**2)
         self.declare_partials(
             "mtx",
-            "correction",
+            "rethorst_correction",
             cols=cols,
             rows=rows,
-            val=1./(4*np.pi), # 1/4pi
+            val=1./(4*np.pi),  # 1/4pi
         )
+
         ind_1 = 0
         ind_2 = 0
 
@@ -99,29 +103,35 @@ class VLMMtxRHSComp(om.ExplicitComponent):
             vel_mtx_name = "{}_{}_vel_mtx".format(name, "coll_pts")
             normals_name = "{}_normals".format(name)
 
-            self.add_input(vel_mtx_name, shape=(system_size, nx - 1, ny - 1, 3), units="1/m")
+            self.add_input(vel_mtx_name, shape=(
+                system_size, nx - 1, ny - 1, 3), units="1/m")
             self.add_input(normals_name, shape=(nx - 1, ny - 1, 3))
 
-            velocities_indices = np.arange(system_size * num * 3).reshape((system_size, nx - 1, ny - 1, 3))
+            velocities_indices = np.arange(
+                system_size * num * 3).reshape((system_size, nx - 1, ny - 1, 3))
             normals_indices = np.arange(num * 3).reshape((num, 3))
 
             # Declare each set of partials based on the indices, ind_1 and ind_2
             self.declare_partials(
                 "mtx",
                 vel_mtx_name,
-                rows=np.einsum("ij,k->ijk", mtx_indices[:, ind_1:ind_2], np.ones(3, int)).flatten(),
+                rows=np.einsum(
+                    "ij,k->ijk", mtx_indices[:, ind_1:ind_2], np.ones(3, int)).flatten(),
                 cols=velocities_indices.flatten(),
             )
             self.declare_partials(
                 "mtx",
                 normals_name,
-                rows=np.einsum("ij,k->ijk", mtx_indices[ind_1:ind_2, :], np.ones(3, int)).flatten(),
-                cols=np.einsum("ik,j->ijk", normals_indices, np.ones(system_size, int)).flatten(),
+                rows=np.einsum(
+                    "ij,k->ijk", mtx_indices[ind_1:ind_2, :], np.ones(3, int)).flatten(),
+                cols=np.einsum("ik,j->ijk", normals_indices,
+                               np.ones(system_size, int)).flatten(),
             )
             self.declare_partials(
                 "rhs",
                 normals_name,
-                rows=np.outer(rhs_indices[ind_1:ind_2], np.ones(3, int)).flatten(),
+                rows=np.outer(rhs_indices[ind_1:ind_2],
+                              np.ones(3, int)).flatten(),
                 cols=normals_indices.flatten(),
             )
 
@@ -152,16 +162,19 @@ class VLMMtxRHSComp(om.ExplicitComponent):
             # Construct the full matrix and all of the lifting surfaces
             # together
             # TODO: This is not complex-safe
-            self.mtx_n_n_3[:, ind_1:ind_2, :] = inputs[vel_mtx_name].reshape((system_size, num, 3))
-            self.normals_n_3[ind_1:ind_2, :] = inputs[normals_name].reshape((num, 3))
+            self.mtx_n_n_3[:, ind_1:ind_2, :] = inputs[vel_mtx_name].reshape(
+                (system_size, num, 3))
+            self.normals_n_3[ind_1:ind_2,
+                             :] = inputs[normals_name].reshape((num, 3))
 
             ind_1 += num
 
         # Actually obtain the final matrix by multiplying through with the
         # normals. Also create the rhs based on v dot n.
-        outputs["mtx"] = np.einsum("ijk,ik->ij", self.mtx_n_n_3, self.normals_n_3)
-        outputs["mtx"] = outputs["mtx"] + inputs["correction"]/(4*np.pi) # applying the rethorst correction
-        outputs["rhs"] = -np.einsum("ij,ij->i", inputs["freestream_velocities"], self.normals_n_3)
+        outputs["mtx"] = np.einsum("ijk,ik->ij", self.mtx_n_n_3, self.normals_n_3)\
+            + inputs["rethorst_correction"]/(4*np.pi)
+        outputs["rhs"] = -np.einsum("ij,ij->i",
+                                    inputs["freestream_velocities"], self.normals_n_3)
 
     def compute_partials(self, inputs, partials):
         surfaces = self.options["surfaces"]
@@ -187,9 +200,11 @@ class VLMMtxRHSComp(om.ExplicitComponent):
                 self.normals_n_3,
             ).flatten()
 
-            partials["mtx", normals_name] = self.mtx_n_n_3[ind_1:ind_2, :, :].flatten()
+            partials["mtx", normals_name] = self.mtx_n_n_3[ind_1:ind_2,
+                                                           :, :].flatten()
 
-            partials["rhs", normals_name] = -inputs["freestream_velocities"][ind_1:ind_2, :].flatten()
+            partials["rhs", normals_name] = - \
+                inputs["freestream_velocities"][ind_1:ind_2, :].flatten()
 
             ind_1 += num
 

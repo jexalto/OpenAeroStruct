@@ -47,12 +47,14 @@ class VLMStates(om.Group):
         )
 
         # Compute the vortex mesh based off the deformed aerodynamic mesh
-        self.add_subsystem("vortex_mesh", VortexMesh(surfaces=surfaces), promotes_inputs=["*"], promotes_outputs=["*"])
+        self.add_subsystem("vortex_mesh", VortexMesh(
+            surfaces=surfaces), promotes_inputs=["*"], promotes_outputs=["*"])
 
         # Get vectors from mesh points to collocation points
         self.add_subsystem(
             "get_vectors",
-            GetVectors(surfaces=surfaces, num_eval_points=num_collocation_points, eval_name="coll_pts"),
+            GetVectors(
+                surfaces=surfaces, num_eval_points=num_collocation_points, eval_name="coll_pts"),
             promotes_inputs=["*"],
             promotes_outputs=["*"],
         )
@@ -60,7 +62,8 @@ class VLMStates(om.Group):
         # Construct matrix based on rings, not horseshoes
         self.add_subsystem(
             "mtx_assy",
-            EvalVelMtx(surfaces=surfaces, num_eval_points=num_collocation_points, eval_name="coll_pts"),
+            EvalVelMtx(
+                surfaces=surfaces, num_eval_points=num_collocation_points, eval_name="coll_pts"),
             promotes_inputs=["*"],
             promotes_outputs=["*"],
         )
@@ -82,7 +85,8 @@ class VLMStates(om.Group):
         )
 
         # Construct RHS and full matrix of system
-        self.add_subsystem("mtx_rhs", VLMMtxRHSComp(surfaces=surfaces), promotes_inputs=["*"], promotes_outputs=["*"])
+        self.add_subsystem("mtx_rhs", VLMMtxRHSComp(
+            surfaces=surfaces), promotes_inputs=["*"], promotes_outputs=["*"])
 
         # Solve Mtx RHS to get ring circs
         self.add_subsystem(
@@ -100,7 +104,8 @@ class VLMStates(om.Group):
         # Eval force vectors
         self.add_subsystem(
             "get_vectors_force",
-            GetVectors(surfaces=surfaces, num_eval_points=num_force_points, eval_name="force_pts"),
+            GetVectors(surfaces=surfaces,
+                       num_eval_points=num_force_points, eval_name="force_pts"),
             promotes_inputs=["*"],
             promotes_outputs=["*"],
         )
@@ -108,7 +113,8 @@ class VLMStates(om.Group):
         # Set up force mtx
         self.add_subsystem(
             "mtx_assy_forces",
-            EvalVelMtx(surfaces=surfaces, num_eval_points=num_force_points, eval_name="force_pts"),
+            EvalVelMtx(surfaces=surfaces,
+                       num_eval_points=num_force_points, eval_name="force_pts"),
             promotes_inputs=["*"],
             promotes_outputs=["*"],
         )
@@ -116,7 +122,8 @@ class VLMStates(om.Group):
         # Multiply by horseshoe circs to get velocities
         self.add_subsystem(
             "eval_velocities",
-            EvalVelocities(surfaces=surfaces, num_eval_points=num_force_points, eval_name="force_pts"),
+            EvalVelocities(
+                surfaces=surfaces, num_eval_points=num_force_points, eval_name="force_pts"),
             promotes_inputs=["*"],
             promotes_outputs=["*"],
         )
