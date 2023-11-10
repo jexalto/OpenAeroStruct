@@ -69,6 +69,7 @@ class ConvertVelocity(om.ExplicitComponent):
         self.add_input("beta", val=0.0, units="deg")
         self.add_input("v", val=1.0, units="m/s")
         self.add_input("velocity_distribution", shape=(ny-1), units="m/s")
+        self.add_input("induced_velocity_vector", shape=(system_size, 3), val=0., units="m/s")
         self.add_input("mesh", shape=(nx, ny, 3), units="m")
 
         if rotational:
@@ -81,6 +82,7 @@ class ConvertVelocity(om.ExplicitComponent):
         self.declare_partials("freestream_velocities", "v", val=np.zeros((3 * (nx - 1) * (ny - 1))))#rows=[0], cols=[0], val=[0]
         self.declare_partials("freestream_velocities", "mesh", rows=[0], cols=[0], val=[0])
         self.declare_partials("freestream_velocities", "velocity_distribution", rows=rows, cols=cols)
+        self.declare_partials("freestream_velocities", "induced_velocity_vector", rows=np.arange(0, 3*system_size), cols=np.arange(0, 3*system_size), val=1)
 
         self.set_check_partial_options("*", method='fd')
 
@@ -114,6 +116,8 @@ class ConvertVelocity(om.ExplicitComponent):
         v_inf = v_tot * np.array([cosa * cosb, -sinb, sina * cosb])
         
         outputs["freestream_velocities"][:, :] = v_inf
+        
+        outputs["freestream_velocities"] += inputs['induced_velocity_vector']
 
         if self.options["rotational"]:
             outputs["freestream_velocities"][:, :] += inputs["rotational_velocities"]

@@ -57,5 +57,7 @@ class VLMFunctionals(om.Group):
         )
 
         self.add_subsystem(
-            "CD", TotalDrag(surface=surface), promotes_inputs=["CDv", "CDi", "CDw"], promotes_outputs=["CD"]
+            "CD", TotalDrag(surface=surface), 
+                promotes_inputs=["CDv", "CDi", "CDw", "v", "rho", "S_ref"], 
+                promotes_outputs=["CD", "D_total"]
         )

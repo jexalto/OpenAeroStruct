@@ -74,7 +74,7 @@ class AeroPoint(om.Group):
             prom_in = ["v", "alpha", "beta", "rho", "Mach_number"]
         else:
             aero_states = VLMStates(surfaces=surfaces, rotational=rotational)
-            prom_in = ["v", "alpha", "beta", "rho"]
+            prom_in = ["v", "alpha", "beta", "rho", "velocity_distribution"]
         if ground_effect:
             prom_in.append("height_agl")
 

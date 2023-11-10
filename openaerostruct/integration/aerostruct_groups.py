@@ -137,6 +137,7 @@ class CoupledAS(om.Group):
             promotes_outputs=["b_pts", "widths", "lengths_spanwise", "lengths", "chords", "normals", "S_ref"],
         )
 
+        # self.linear_solver = om.DirectSolver()
         self.linear_solver = om.LinearRunOnce()
 
 
@@ -164,7 +165,7 @@ class CoupledPerformance(om.Group):
                 "sec_forces",
                 "t_over_c",
             ],
-            promotes_outputs=["CDv", "CDw", "L", "D", "CL1", "CDi", "CD", "CL", "Cl"],
+            promotes_outputs=["CDv", "CDw", "L", "D", "CL1", "CDi", "CD", "CL", "Cl", "D_total"],
         )
 
         if surface["fem_model_type"] == "tube":
@@ -317,10 +318,8 @@ class AerostructPoint(om.Group):
         coupled.nonlinear_solver.options["iprint"] = 2
         coupled.nonlinear_solver.options["err_on_non_converge"] = True
 
-        # coupled.linear_solver = om.DirectSolver()
-
-        coupled.linear_solver = om.DirectSolver(assemble_jac=True)
-        coupled.options["assembled_jac_type"] = "csc"
+        coupled.linear_solver = om.DirectSolver(assemble_jac=False)
+        # coupled.options["assembled_jac_type"] = "csc"
 
         # coupled.nonlinear_solver = om.NewtonSolver(solve_subsystems=True)
         # coupled.nonlinear_solver.options['maxiter'] = 50

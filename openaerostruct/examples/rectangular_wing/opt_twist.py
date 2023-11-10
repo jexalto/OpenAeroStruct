@@ -20,6 +20,8 @@ prob = om.Problem()
 # Define flight variables as independent variables of the model
 indep_var_comp = om.IndepVarComp()
 indep_var_comp.add_output("v", val=248.136, units="m/s")  # Freestream Velocity
+indep_var_comp.add_output("velocity_distribution", 
+                          val=np.ones(34)*248.136, units="m/s")  # Freestream Velocity
 indep_var_comp.add_output("alpha", val=5.0, units="deg")  # Angle of Attack
 indep_var_comp.add_output("beta", val=0.0, units="deg")  # Sideslip angle
 indep_var_comp.add_output("omega", val=np.zeros(3), units="deg/s")  # Rotation rate
@@ -34,9 +36,9 @@ prob.model.add_subsystem("flight_vars", indep_var_comp, promotes=["*"])
 # Create a dictionary to store options about the surface
 mesh_dict = {
     "num_y": 35,
-    "num_x": 11,
+    "num_x": 2,
     "wing_type": "rect",
-    "symmetry": True,
+    "symmetry": False,
     "span": 10.0,
     "chord": 1,
     "span_cos_spacing": 1.0,
@@ -51,11 +53,12 @@ surface = {
     # Wing definition
     "name": "wing",  # name of the surface
     "type": "aero",
-    "symmetry": True,  # if true, model one half of wing
+    "symmetry": False,  # if true, model one half of wing
     # reflected across the plane y = 0
     "S_ref_type": "projected",  # how we compute the wing area,
     # can be 'wetted' or 'projected'
     "twist_cp": np.zeros(3),  # Define twist using 3 B-spline cp's
+    "chord_cp": np.ones(3),
     "ref_axis_pos": 0.25,  # Define the reference axis position. 0 is the leading edge, 1 is the trailing edge.
     # distributed along span
     "mesh": mesh,
@@ -89,7 +92,8 @@ prob.model.add_subsystem(name, geom_group)
 aero_group = AeroPoint(surfaces=[surface], rotational=True)
 point_name = "aero_point_0"
 prob.model.add_subsystem(
-    point_name, aero_group, promotes_inputs=["v", "alpha", "beta", "omega", "Mach_number", "re", "rho", "cg"]
+    point_name, aero_group, promotes_inputs=["v", "alpha", "beta", "omega", "Mach_number", "re", "rho", "cg", 
+                                             "velocity_distribution"]
 )
 
 # Connect the mesh from the geometry component to the analysis point
@@ -100,12 +104,14 @@ prob.model.connect(name + ".mesh", point_name + "." + name + ".def_mesh")
 prob.model.connect(name + ".mesh", point_name + ".aero_states." + name + "_def_mesh")
 
 # Set optimizer as model driver
-prob.driver = om.ScipyOptimizeDriver()
-prob.driver.options["debug_print"] = ["nl_cons", "objs", "desvars"]
+prob.driver = om.pyOptSparseDriver()
+prob.driver.options["optimizer"] = "SNOPT"
 
 # Setup problem and add design variables, constraint, and objective
 prob.model.add_design_var("wing.twist_cp", lower=-10.0, upper=15.0)
-prob.model.add_constraint(point_name + ".wing_perf.CL", equals=0.5)
+prob.model.add_design_var("wing.chord_cp", lower=1e-4, upper=5.0)
+prob.model.add_constraint(point_name + ".wing_perf.L", equals=58492.90092083)
+prob.model.add_constraint(point_name + ".wing.S_ref", equals=10.0)
 prob.model.add_objective(point_name + ".wing_perf.CD", scaler=1e4)
 
 # Set up the problem
@@ -113,3 +119,30 @@ prob.setup()
 
 # Run optimization
 prob.run_driver()
+
+print(prob["wing.twist"])
+print(prob["wing.chord"])
+print(prob[point_name + ".wing_perf.Cl"])
+print(prob[point_name + ".wing.S_ref"])
+
+import matplotlib.pyplot as plt
+import niceplots
+plt.style.use(niceplots.get_style())
+_, ax = plt.subplots(figsize=(10, 7))
+
+spanwise = np.linspace(-1, 1, len(prob['wing.chord'][0]))
+ax.plot(spanwise, prob["wing.twist"][0],
+        label=f'twist', color='Orange')
+ax.plot(spanwise, prob["wing.chord"][0],
+        label=f'chord', color='b', linestyle='dashed')
+
+spanwise = np.linspace(-1, 1, len(prob[point_name + ".wing_perf.Cl"]))
+chord = prob["wing.chord"][0]
+chord_cl = [(chord[index]+chord[index+1])/2 for index in range(len(prob[point_name + ".wing_perf.Cl"]))]
+ax.plot(spanwise, prob[point_name + ".wing_perf.Cl"]*chord_cl,
+        label=f'Cl', color='grey', linestyle='dashed')
+
+ax.legend()
+niceplots.adjust_spines(ax, outward=True)
+
+plt.savefig('./pic.png')

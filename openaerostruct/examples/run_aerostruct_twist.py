@@ -16,17 +16,13 @@ mesh_dict = {"num_y": 35,
     "num_x": 2,
     "wing_type": "rect",
     "symmetry": False,
-    "span": 0.748*2,
-    "root_chord": 0.24,
+    "span": 5.0,
+    "chord": 1,
     "num_twist_cp": num_cp
     }
 
 mesh = generate_mesh(mesh_dict)
 chord = np.ones(num_cp)
-
-# mesh_dict = {"num_y": 5, "num_x": 2, "wing_type": "CRM", "symmetry": True, "num_twist_cp": 5}
-# mesh, twist_cp = generate_mesh(mesh_dict)
-
 
 surface = {
     # Wing definition
@@ -36,9 +32,9 @@ surface = {
     "S_ref_type": "wetted",  # how we compute the wing area,
     # can be 'wetted' or 'projected'
     "fem_model_type": "tube",
-    "thickness_cp": np.array([0.01, 0.01, 0.01]),
-    "twist_cp": np.ones(num_cp),
-    "chord_cp": np.ones(num_cp),
+    "thickness_cp": np.array([0.1, 0.1, 0.1]),
+    "twist_cp": chord,
+    "chord_cp": chord,
     "mesh": mesh,
     # Aerodynamic performance of the lifting surface at
     # an angle of attack of 0 (alpha=0).
@@ -72,21 +68,20 @@ surface = {
 # Create the problem and assign the model group
 prob = om.Problem()
 
+# Add problem information as an independent variables component
 indep_var_comp = om.IndepVarComp()
-indep_var_comp.add_output("fuel_mass", 
-                          val=0., units="kg") 
-indep_var_comp.add_output("v", val=40, units="m/s")
+indep_var_comp.add_output("v", val=248.136, units="m/s")
 indep_var_comp.add_output("chord", val=chord, units="m")
 indep_var_comp.add_output("velocity_distribution", 
-                          val=np.ones(34)*40, units="m/s") 
-indep_var_comp.add_output("alpha", val=2.0, units="deg")
-indep_var_comp.add_output("Mach_number", val=0.2)
-indep_var_comp.add_output("re", val=3.4e6, units="1/m")
-indep_var_comp.add_output("rho", val=1.225, units="kg/m**3")
-indep_var_comp.add_output("CT", val=grav_constant * 0, units="1/s")
-indep_var_comp.add_output("R", val=0, units="m")
-indep_var_comp.add_output("W0", val=10, units="kg")
-indep_var_comp.add_output("speed_of_sound", val=333.4, units="m/s")
+                          val=np.ones(34)*248.136, units="m/s") 
+indep_var_comp.add_output("alpha", val=5.0, units="deg")
+indep_var_comp.add_output("Mach_number", val=0.84)
+indep_var_comp.add_output("re", val=1.0e6, units="1/m")
+indep_var_comp.add_output("rho", val=0.38, units="kg/m**3")
+indep_var_comp.add_output("CT", val=grav_constant * 17.0e-6, units="1/s")
+indep_var_comp.add_output("R", val=11.165e6, units="m")
+indep_var_comp.add_output("W0", val=10000, units="kg")
+indep_var_comp.add_output("speed_of_sound", val=295.4, units="m/s")
 indep_var_comp.add_output("load_factor", val=1.0)
 indep_var_comp.add_output("empty_cg", val=np.zeros((3)), units="m")
 
@@ -102,8 +97,7 @@ prob.model.add_subsystem(name, aerostruct_group)
 point_name = "AS_point_0"
 
 # Create the aero point group and add it to the model
-AS_point = AerostructPoint(surfaces=[surface],
-                           internally_connect_fuelburn=False)
+AS_point = AerostructPoint(surfaces=[surface])
 
 prob.model.add_subsystem(
     point_name,
@@ -126,11 +120,6 @@ prob.model.add_subsystem(
 prob.model.connect('velocity_distribution',
                      'AS_point_0.coupled.aero_states.velocity_distribution')
 
-prob.model.connect('fuel_mass',
-                        'AS_point_0.total_perf.L_equals_W.fuelburn')
-prob.model.connect('fuel_mass',
-                        'AS_point_0.total_perf.CG.fuelburn')
-
 prob.model.connect('chord',
                      'wing.geometry.chord_cp')
 
@@ -151,10 +140,7 @@ prob.model.connect(name + ".t_over_c", com_name + ".t_over_c")
 
 prob.driver = om.pyOptSparseDriver()
 prob.driver.options["optimizer"] = "SNOPT"
-prob.driver.options["debug_print"] = ['desvars', 'nl_cons', 'objs']
-prob.driver.opt_settings = {
-#     "Major iterations limit": 0,
-}
+prob.driver.options["debug_print"] = ['desvars', 'nl_cons']
 
 recorder = om.SqliteRecorder("aerostruct.db")
 prob.driver.add_recorder(recorder)
@@ -162,32 +148,26 @@ prob.driver.recording_options["record_derivatives"] = True
 prob.driver.recording_options["includes"] = ["*"]
 
 # Setup problem and add design variables, constraint, and objective
-# prob.model.add_design_var("wing.twist_cp", lower=-10.0, upper=15.0)
-prob.model.add_design_var("wing.geometry.chord_cp", lower=0.0, upper=30.0, units='m')
-prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
-prob.model.add_constraint("AS_point_0.wing_perf.failure", upper=0.0)
-prob.model.add_constraint("AS_point_0.wing_perf.thickness_intersects", upper=0.0)
+prob.model.add_design_var("wing.twist_cp", lower=-10.0, upper=15.0)
+# prob.model.add_design_var("wing.geometry.chord_cp", lower=0.0, upper=10.0)
+# prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
+# prob.model.add_constraint("AS_point_0.wing_perf.failure", upper=0.0)
+# prob.model.add_constraint("AS_point_0.wing_perf.thickness_intersects", upper=0.0)
 
 # Add design variables, constraisnt, and objective on the problem
 # prob.model.add_design_var("alpha", lower=-10.0, upper=10.0)
-prob.model.add_constraint("AS_point_0.L_equals_W", equals=0.)
-# prob.model.add_constraint("AS_point_0.total_perf.L", equals=24545.68752965)
+# prob.model.add_constraint("AS_point_0.L_equals_W", equals=0.)
+prob.model.add_constraint("AS_point_0.total_perf.L", equals=24545.68752965)
 prob.model.add_objective("AS_point_0.total_perf.CD", scaler=1/0.0293542)
 
 # Set up the problem
 prob.setup(check=True)
-prob.run_model()
-
-om.n2(prob, outfile='run_CRM.html')
-
-print(prob["AS_point_0.L_equals_W"])
-print(prob["AS_point_0.total_perf.L"])
-
-twist_0 = prob["wing.geometry.twist"][0].copy()
-chord_0 = prob["wing.geometry.chord"][0].copy()
-CL0 = prob["AS_point_0.wing_perf.Cl"].copy()
 
 # Run optimization
+prob.run_model()
+
+twist_0 = prob["wing.geometry.twist"][0].copy()
+CL0 = prob["AS_point_0.wing_perf.Cl"].copy()
 
 prob.setup()
 prob.run_driver()
@@ -204,32 +184,20 @@ print(prob[point_name + ".wing_perf.Cl"])
 import matplotlib.pyplot as plt
 import niceplots
 plt.style.use(niceplots.get_style())
-
-_, ax = plt.subplots(figsize=(10, 7))
-
-spanwise = np.linspace(-1, 1, len(prob['wing.geometry.chord'][0]))
-ax.plot(spanwise, prob["wing.geometry.chord"][0],
-        label=f'chord, optimised', color='b', linestyle='dashed')
-ax.plot(spanwise, chord_0,
-        label=f'chord, original', color='Orange')
-
-ax.legend()
-niceplots.adjust_spines(ax, outward=True)
-
-plt.savefig('./chord.png')
-
 _, ax = plt.subplots(figsize=(10, 7))
 
 spanwise = np.linspace(-1, 1, len(prob['wing.geometry.chord'][0]))
 ax.plot(spanwise, prob["wing.geometry.twist"][0],
-        label=f'twist, optimised', color='b', linestyle='dashed')
+        label=f'twist', color='Orange')
 ax.plot(spanwise, twist_0,
-        label=f'twist, original', color='Orange')
+        label=f'twist', color='Orange')
+# ax.plot(spanwise, prob["wing.geometry.chord"][0],
+#         label=f'chord', color='b', linestyle='dashed')
 
 ax.legend()
 niceplots.adjust_spines(ax, outward=True)
 
-plt.savefig('./twist.png')
+plt.savefig('./pictwist.png')
 
 _, ax = plt.subplots(figsize=(10, 7))
 
@@ -237,13 +205,12 @@ Cl = prob["AS_point_0.wing_perf.Cl"]
 spanwise = np.linspace(-1, 1, len(Cl))
 chord = prob["wing.geometry.chord"][0]
 chord_cl = [(chord[index]+chord[index+1])/2 for index in range(len(Cl))]
-chord0_cl = [(chord_0[index]+chord_0[index+1])/2 for index in range(len(Cl))]
 ax.plot(spanwise, Cl*chord_cl,
-        label=f'Cl*c, optimised', color='b', linestyle='dashed')
-ax.plot(spanwise, CL0*chord0_cl,
-        label=f'Cl*c, original', color='orange')
+        label=f'Cl', color='b', linestyle='dashed')
+ax.plot(spanwise, CL0*chord_cl,
+        label=f'Cl, original', color='orange')
 
 ax.legend()
 niceplots.adjust_spines(ax, outward=True)
 
-plt.savefig('./clc.png')
+plt.savefig('./pic.png')
